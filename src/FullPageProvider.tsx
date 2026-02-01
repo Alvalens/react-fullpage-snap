@@ -108,7 +108,7 @@ export function FullPageProvider({
       onComplete: () => {
         // Snap to exact position
         window.scrollTo(0, targetY);
-        
+
         setActiveIndex(targetIndex);
         setIsScrolling(false);
         setScrollDirection(null);
@@ -170,24 +170,40 @@ export function FullPageProvider({
   useEffect(() => {
     if (!wheelScrolling) return;
 
+    // How long of a gap (no wheel events) before we consider a gesture "ended"
+    const GESTURE_GAP = 300;
+
+    let gestureFired = false;
+    let gestureTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const resetGesture = () => {
+      gestureFired = false;
+      wheelDelta.current = 0;
+    };
+
     const handleWheel = (e: WheelEvent) => {
-      const now = Date.now();
-      
-      // STRICT COOLDOWN: Block all wheel events during cooldown
-      if (now - lastScrollTime.current < scrollingSpeed - 100) {
-        e.preventDefault();
-        return;
-      }
+      // Always prevent default to stop native scroll
+      e.preventDefault();
 
-      // Block if scrolling
+      // Block if currently animating
       if (!allowScrolling || isScrolling) {
-        e.preventDefault();
         return;
       }
 
+      // Reset the gesture gap timer on every wheel event.
+      // If no new event arrives within GESTURE_GAP ms, the gesture is over.
+      if (gestureTimeout) clearTimeout(gestureTimeout);
+      gestureTimeout = setTimeout(resetGesture, GESTURE_GAP);
+
+      // This gesture already triggered a scroll — ignore the rest
+      if (gestureFired) {
+        return;
+      }
+
+      const now = Date.now();
       const timeDiff = now - lastWheelTime.current;
 
-      // Reset delta if too much time passed
+      // Reset delta if too much time passed (new gesture)
       if (timeDiff > 200) {
         wheelDelta.current = e.deltaY;
       } else {
@@ -201,28 +217,26 @@ export function FullPageProvider({
         return;
       }
 
-      // Prevent default scroll
-      e.preventDefault();
+      // Mark this gesture as consumed — no more scrolls until fingers stop
+      gestureFired = true;
 
-      // Update last scroll time IMMEDIATELY
-      lastScrollTime.current = now;
-
-      // STRICT: Move EXACTLY one section based on direction
+      // Move EXACTLY one section based on direction
       const direction = wheelDelta.current > 0 ? 1 : -1;
       const targetIndex = activeIndex + direction;
 
-      // Validate bounds and move
       if (targetIndex >= 0 && targetIndex < sections.length && targetIndex !== activeIndex) {
         moveTo(targetIndex);
       }
 
-      // Reset delta
       wheelDelta.current = 0;
     };
 
     window.addEventListener('wheel', handleWheel, { passive: false });
-    return () => window.removeEventListener('wheel', handleWheel);
-  }, [wheelScrolling, allowScrolling, isScrolling, scrollThreshold, activeIndex, sections.length, moveTo, scrollingSpeed]);
+    return () => {
+      window.removeEventListener('wheel', handleWheel);
+      if (gestureTimeout) clearTimeout(gestureTimeout);
+    };
+  }, [wheelScrolling, allowScrolling, isScrolling, scrollThreshold, activeIndex, sections.length, moveTo]);
 
   // Keyboard navigation
   useEffect(() => {
