@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2026-02-01
+
+### Fixed
+
+- **Trackpad scrolling**: Fixed stagger/jitter when using touchpad 2-finger scroll gestures on desktop
+- Replaced time-based cooldown with gesture-based locking — one continuous trackpad gesture now triggers exactly one section scroll regardless of speed changes mid-gesture
+- Cleaned up unused refs from previous iteration
+
 ## [1.0.1] - 2026-02-01
 
 ### Fixed
