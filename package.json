@@ -1,0 +1,61 @@
+{
+  "name": "@alvalens/react-fullpage-snap",
+  "version": "1.0.0",
+  "description": "Fullpage scroll snap for React with smooth animations - zero dependencies",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "react",
+    "fullpage",
+    "scroll-snap",
+    "scroll",
+    "nextjs",
+    "smooth-scroll",
+    "sections",
+    "snap-scroll",
+    "fullpage-scroll",
+    "react-scroll"
+  ],
+  "author": {
+    "name": "Alvalen Shafelbilyunazra",
+    "email": "alvalen.shafel04@gmail.com",
+    "url": "https://alvalens.my.id"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alvalens/react-fullpage-snap.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Alvalens/react-fullpage-snap/issues"
+  },
+  "homepage": "https://github.com/Alvalens/react-fullpage-snap#readme",
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  }
+}
