@@ -31,12 +31,18 @@ export function FullPageProvider({
   const touchStartY = useRef<number>(0);
   const lastWheelTime = useRef<number>(0);
   const wheelDelta = useRef<number>(0);
+  const lastScrollTime = useRef<number>(0);
+  const isProcessingTouch = useRef<boolean>(false);
+  const isTouching = useRef<boolean>(false);
 
   // Add fullpage-active class to body on mount
   useEffect(() => {
     document.body.classList.add('fullpage-active');
+    document.documentElement.classList.add('fullpage-active');
+    
     return () => {
       document.body.classList.remove('fullpage-active');
+      document.documentElement.classList.remove('fullpage-active');
     };
   }, []);
 
@@ -56,6 +62,7 @@ export function FullPageProvider({
 
   // Scroll to section by index or anchor
   const moveTo = useCallback((target: number | string) => {
+    // IMMEDIATE blocking - prevent any concurrent scroll attempts
     if (isScrolling || !allowScrolling) return;
 
     let targetIndex: number;
@@ -69,6 +76,10 @@ export function FullPageProvider({
 
     if (targetIndex < 0 || targetIndex >= sections.length) return;
     if (targetIndex === activeIndex) return;
+
+    // CRITICAL: Set scrolling state IMMEDIATELY (synchronously)
+    // This prevents ANY other scroll events from queuing
+    setIsScrolling(true);
 
     const origin: SectionInfo = {
       index: activeIndex,
@@ -86,7 +97,6 @@ export function FullPageProvider({
       beforeScroll(origin, destination);
     }
 
-    setIsScrolling(true);
     setScrollDirection(targetIndex > activeIndex ? 'down' : 'up');
 
     const targetElement = sections[targetIndex];
@@ -96,6 +106,9 @@ export function FullPageProvider({
       targetY,
       duration: scrollingSpeed,
       onComplete: () => {
+        // Snap to exact position
+        window.scrollTo(0, targetY);
+        
         setActiveIndex(targetIndex);
         setIsScrolling(false);
         setScrollDirection(null);
@@ -158,40 +171,58 @@ export function FullPageProvider({
     if (!wheelScrolling) return;
 
     const handleWheel = (e: WheelEvent) => {
+      const now = Date.now();
+      
+      // STRICT COOLDOWN: Block all wheel events during cooldown
+      if (now - lastScrollTime.current < scrollingSpeed - 100) {
+        e.preventDefault();
+        return;
+      }
+
+      // Block if scrolling
       if (!allowScrolling || isScrolling) {
         e.preventDefault();
         return;
       }
 
-      const now = Date.now();
       const timeDiff = now - lastWheelTime.current;
 
-      // Accumulate delta for threshold detection
-      if (timeDiff < 200) {
-        wheelDelta.current += e.deltaY;
-      } else {
+      // Reset delta if too much time passed
+      if (timeDiff > 200) {
         wheelDelta.current = e.deltaY;
+      } else {
+        wheelDelta.current += e.deltaY;
       }
 
       lastWheelTime.current = now;
 
       // Check threshold
-      if (Math.abs(wheelDelta.current) < scrollThreshold) return;
-
-      e.preventDefault();
-
-      if (wheelDelta.current > 0) {
-        moveNext();
-      } else {
-        movePrevious();
+      if (Math.abs(wheelDelta.current) < scrollThreshold) {
+        return;
       }
 
+      // Prevent default scroll
+      e.preventDefault();
+
+      // Update last scroll time IMMEDIATELY
+      lastScrollTime.current = now;
+
+      // STRICT: Move EXACTLY one section based on direction
+      const direction = wheelDelta.current > 0 ? 1 : -1;
+      const targetIndex = activeIndex + direction;
+
+      // Validate bounds and move
+      if (targetIndex >= 0 && targetIndex < sections.length && targetIndex !== activeIndex) {
+        moveTo(targetIndex);
+      }
+
+      // Reset delta
       wheelDelta.current = 0;
     };
 
     window.addEventListener('wheel', handleWheel, { passive: false });
     return () => window.removeEventListener('wheel', handleWheel);
-  }, [wheelScrolling, allowScrolling, isScrolling, scrollThreshold, moveNext, movePrevious]);
+  }, [wheelScrolling, allowScrolling, isScrolling, scrollThreshold, activeIndex, sections.length, moveTo, scrollingSpeed]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -246,33 +277,94 @@ export function FullPageProvider({
   useEffect(() => {
     if (!touchScrolling) return;
 
+    let hasMoved = false;
+
     const handleTouchStart = (e: TouchEvent) => {
+      // Mark touch started
+      isTouching.current = true;
+      
+      // Block if scroll in progress
+      if (isProcessingTouch.current || isScrolling) {
+        return;
+      }
+      
       touchStartY.current = e.touches[0].clientY;
+      hasMoved = false;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      // ALWAYS prevent default during touch to stop native momentum
+      e.preventDefault();
+      
+      const currentY = e.touches[0].clientY;
+      const diff = Math.abs(touchStartY.current - currentY);
+      
+      // Mark that user has moved significantly
+      if (diff > touchThreshold) {
+        hasMoved = true;
+      }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      if (!allowScrolling || isScrolling) return;
+      isTouching.current = false;
+      
+      const now = Date.now();
+      
+      // Cooldown: Wait for scroll animation to complete
+      if (now - lastScrollTime.current < scrollingSpeed) {
+        return;
+      }
+
+      // Don't process if blocked
+      if (isProcessingTouch.current || !allowScrolling || isScrolling) {
+        return;
+      }
+
+      // User didn't move enough
+      if (!hasMoved) return;
 
       const touchEndY = e.changedTouches[0].clientY;
       const diff = touchStartY.current - touchEndY;
 
+      // If threshold not met, ignore
       if (Math.abs(diff) < touchThreshold) return;
 
-      if (diff > 0) {
-        moveNext();
-      } else {
-        movePrevious();
+      // Lock to prevent concurrent processing
+      isProcessingTouch.current = true;
+      lastScrollTime.current = now;
+
+      // Calculate target - ONE section only
+      let targetIndex = activeIndex;
+      
+      if (diff > 0 && activeIndex < sections.length - 1) {
+        // Swiped up -> next section
+        targetIndex = activeIndex + 1;
+      } else if (diff < 0 && activeIndex > 0) {
+        // Swiped down -> previous section
+        targetIndex = activeIndex - 1;
       }
+
+      // Move if target changed
+      if (targetIndex !== activeIndex) {
+        moveTo(targetIndex);
+      }
+
+      // Release lock after scroll completes
+      setTimeout(() => {
+        isProcessingTouch.current = false;
+      }, scrollingSpeed + 100);
     };
 
     window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
     window.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     return () => {
       window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [touchScrolling, allowScrolling, isScrolling, touchThreshold, moveNext, movePrevious]);
+  }, [touchScrolling, allowScrolling, isScrolling, touchThreshold, activeIndex, sections.length, moveTo, scrollingSpeed]);
 
   // Hash navigation on mount and hashchange
   useEffect(() => {
