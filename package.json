@@ -1,6 +1,6 @@
 {
   "name": "@alvalens/react-fullpage-snap",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Fullpage scroll snap for React with smooth animations - zero dependencies",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
